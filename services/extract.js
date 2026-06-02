@@ -65,19 +65,31 @@ export async function extractFrame({ videoPath, outDir, slug, index, tSec, crop,
 
 /**
  * Extract many frames. timestamps = sorted unique seconds.
- * onProgress({done,total,tSec}) is called as each completes.
- * Returns array of { index, tSec, file, stamp }.
+ * Each frame is an independent input-seek writing a distinct file, so we run a small
+ * pool of ffmpeg processes in parallel (≈Nx faster than one-at-a-time for big jobs).
+ * onProgress({done,total,tSec}) fires as each completes; returns frames in index order.
  */
-export async function extractFrames({ videoPath, outDir, slug, timestamps, crop, ext = 'png', jpegQuality = 3, offset = 0, onProgress }) {
-  const out = [];
-  for (let i = 0; i < timestamps.length; i++) {
-    const tSec = timestamps[i];
-    const frame = await extractFrame({
-      videoPath, outDir, slug, index: i + 1, tSec, crop, ext, jpegQuality, offset,
-    });
-    out.push(frame);
-    if (onProgress) onProgress({ done: i + 1, total: timestamps.length, tSec });
+export async function extractFrames({ videoPath, outDir, slug, timestamps, crop, ext = 'png', jpegQuality = 3, offset = 0, onProgress, concurrency }) {
+  const total = timestamps.length;
+  const out = new Array(total);
+  const limit = Math.max(1, Math.min(concurrency || parseInt(process.env.EXTRACT_CONCURRENCY || '4', 10), total));
+  let next = 0;
+  let done = 0;
+
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= total) return;
+      const tSec = timestamps[i];
+      out[i] = await extractFrame({
+        videoPath, outDir, slug, index: i + 1, tSec, crop, ext, jpegQuality, offset,
+      });
+      done++;
+      if (onProgress) onProgress({ done, total, tSec });
+    }
   }
+
+  await Promise.all(Array.from({ length: limit }, worker));
   return out;
 }
 

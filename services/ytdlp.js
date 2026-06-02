@@ -35,12 +35,16 @@ export async function download(url, destDir, { maxHeight = 720, start = null, en
     '--merge-output-format', 'mp4',
     '--no-playlist',
     '--no-warnings',
+    '--concurrent-fragments', '4', // parallel fragment download (DASH/HLS)
+    '--newline',                   // progress on its own line (no \r-only updates)
   ];
   if (section) {
-    // Download only the requested window; force keyframes at cuts so the clip
-    // begins/ends accurately at the window edges (its internal time may reset to 0;
-    // the caller derives the offset by probing the result).
-    args.push('--download-sections', section, '--force-keyframes-at-cuts');
+    // Download ONLY the requested window. Stream-copied (cut at the nearest keyframe ≤
+    // start) — near-instant, no re-encode. We deliberately do NOT pass
+    // --force-keyframes-at-cuts: it re-encodes the whole section (minutes for a long
+    // clip). The clip's internal time may reset to 0; the caller derives the offset by
+    // probing the result. Frames land within ~one keyframe interval of their label.
+    args.push('--download-sections', section);
   }
   args.push('-o', outTmpl, '--', url);
   const res = await run(ytdlp, args, { timeoutMs: 30 * 60 * 1000, onStderr: onProgress });

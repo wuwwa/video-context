@@ -161,8 +161,13 @@ async function run(job) {
             const detail = pm[2].replace(/\s+/g, ' ').trim();
             setProgress(job, 'downloading', pct / 100, detail);
             logLive(job, 'Downloading…', `Downloading… ${pct.toFixed(1)}%${detail ? ` · ${detail}` : ''}`);
-          } else if (/^\[(download|Merger|ExtractAudio|VideoConvertor)\]/.test(s)) {
-            // Milestone lines (Destination, merging, etc.) — keep them in the log.
+          } else if (/^\[(Merger|VideoRemuxer|ExtractAudio|VideoConvertor|Fixup)/.test(s) || /Merging|Deleting original|Splic/i.test(s)) {
+            // Post-download phase (merge/remux/fixup) emits no % — show an animated
+            // "processing…" bar so the UI doesn't look frozen at 100%, and log the line.
+            setProgress(job, 'processing');
+            log(job, s);
+          } else if (/^\[(download|info)\]/.test(s)) {
+            // Milestone lines (Destination, format info, etc.) — keep them in the log.
             log(job, s);
           }
         }
