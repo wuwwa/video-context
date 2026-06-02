@@ -1,0 +1,19 @@
+{
+  "name": "video-context",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local video → Claude-ready frame package. Grab timestamp-named frames from local files or URLs (yt-dlp) and export a manifest + frames bundle optimized for feeding visual context to Claude.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "express": "^4.21.2"
+  }
+}

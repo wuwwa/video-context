@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>video-context — frames for Claude</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow"><span class="d"></span> local · ffmpeg + yt-dlp · packages for Claude</span>
+    <h1>video<span class="accent">·context</span></h1>
+    <p>Turn a video — a local file or a URL — into a small, timestamp-named set of frames plus a manifest,
+       packaged so you can hand it straight to Claude as visual context.</p>
+  </header>
+
+  <!-- health banner -->
+  <div class="banner" id="banner"></div>
+
+  <!-- 1. SOURCE -->
+  <div class="panel">
+    <div class="ttl"><span class="num">01</span><h2>Source</h2></div>
+    <div class="body">
+      <div class="tabs">
+        <button class="tab on" data-tab="url" id="tabUrl">URL (yt-dlp)</button>
+        <button class="tab" data-tab="local" id="tabLocal">Local file</button>
+      </div>
+
+      <div id="paneUrl">
+        <div class="row">
+          <input type="text" class="grow" id="url" placeholder="https://www.youtube.com/watch?v=…">
+        </div>
+        <div class="hint2" id="urlHint">Downloads ≤720p + auto-subtitles, then extracts frames.</div>
+      </div>
+
+      <div id="paneLocal" style="display:none">
+        <div class="row" style="margin-bottom:10px">
+          <input type="text" class="grow" id="localPath" placeholder="C:\path\to\video.mp4  (paste full path — best for large files)">
+        </div>
+        <div id="drop">
+          <b>or drop a video here</b> to preview &amp; scrub it
+          <span class="hint">we read the dropped file's path for extraction; the file never uploads</span>
+        </div>
+        <div class="vidwrap hide" id="vidwrap"><video id="video" controls preload="metadata" playsinline></video></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. METHOD -->
+  <div class="panel">
+    <div class="ttl"><span class="num">02</span><h2>Method</h2><span class="sub" id="methodSub">how frames are chosen</span></div>
+    <div class="body">
+      <div class="row">
+        <div class="field">
+          <label>Mode</label>
+          <select id="mode">
+            <option value="scene" selected>Scene detection — best signal</option>
+            <option value="interval">Interval — every N seconds</option>
+            <option value="manual">Manual — pick timestamps</option>
+          </select>
+        </div>
+        <div class="field" id="budgetField">
+          <label>Frame budget</label>
+          <input type="text" id="budget" value="15" style="width:90px">
+        </div>
+        <div class="field" id="everyField" style="display:none">
+          <label>Every (sec)</label>
+          <input type="text" id="every" value="30" style="width:90px">
+        </div>
+        <div class="field" id="startField">
+          <label>Clip start (optional)</label>
+          <input type="text" id="start" placeholder="0:00" style="width:110px">
+        </div>
+        <div class="field" id="endField">
+          <label>Clip end (optional)</label>
+          <input type="text" id="end" placeholder="end of video" style="width:120px">
+        </div>
+        <div class="field">
+          <label>Format</label>
+          <select id="ext"><option value="png" selected>PNG</option><option value="jpg">JPEG</option></select>
+        </div>
+        <div class="field">
+          <label>Transcript</label>
+          <label class="keep" style="white-space:nowrap"><input type="checkbox" id="wantSubs" checked style="margin-right:4px">Fetch subtitles</label>
+        </div>
+      </div>
+
+      <!-- manual timestamp helpers -->
+      <div id="manualBox" style="display:none;margin-top:16px">
+        <div class="row" style="margin-bottom:12px">
+          <button class="ghost" id="capBtn" disabled>+ Capture current preview time</button>
+          <span class="hint2" id="capHint" style="margin-top:0">load a local file above to scrub &amp; capture</span>
+        </div>
+        <div class="field">
+          <label>Timestamps — one per line (mm:ss, h:mm:ss, or seconds)</label>
+          <textarea id="tsList" style="width:100%;min-height:84px" placeholder="0:05&#10;0:32&#10;1:14"></textarea>
+        </div>
+      </div>
+
+      <div class="btnrow">
+        <button class="primary" id="run" disabled>▶ Extract frames</button>
+        <span class="resCount" id="status"></span>
+      </div>
+      <div class="progress" id="progress" style="margin-top:14px">
+        <div class="bar"><div class="fill" id="progFill"></div></div>
+        <div class="progLabel" id="progLabel">Idle</div>
+      </div>
+      <div style="margin-top:10px"><div id="log"><span class="muted">Idle — choose a source to begin.</span></div></div>
+    </div>
+  </div>
+
+  <!-- 3. RESULTS -->
+  <div class="panel" id="resPanel" style="display:none">
+    <div class="ttl"><span class="num">03</span><h2>Frames</h2><span class="resCount" id="resCount"></span></div>
+    <div class="body">
+      <div class="btnrow" style="margin-top:0;margin-bottom:16px">
+        <button class="primary" id="saveAll">↓ Save All (.zip)</button>
+        <button class="ghost" id="reveal">📂 Reveal folder</button>
+        <button class="ghost" id="applySel" style="display:none">Apply selection (remove unchecked)</button>
+      </div>
+      <div class="sheetwrap" id="sheetwrap" style="display:none">
+        <div class="sheetcap">Contact sheet — overview of all frames (also saved in the .zip). Click to open full size.</div>
+        <a id="sheetLink" target="_blank"><img id="sheetImg" alt="contact sheet"></a>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
+
+  <footer>runs locally · <a href="../framegrab.html">offline single-file fallback</a> · frames downscaled to ~1568px for Claude</footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

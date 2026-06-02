@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>framegrab — local video frame extractor</title>
+<style>
+  :root{
+    --accent:#635bff; --accent-dark:#4f46e5; --accent-soft:rgba(99,91,255,.10);
+    --ink:#1a1f36; --ink2:#3c4257; --body:#525f7f; --muted:#697386; --faint:#8792a2;
+    --bg:#f7f9fc; --card:#ffffff; --line:#e3e8ee; --line-strong:#cfd7e0; --line2:#edf1f5;
+    --green:#0e6245; --green-soft:#cbf4c9; --red:#cd3d64; --red-soft:#f7d9e1;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --r:6px; --r-lg:8px;
+    --shadow:0 0 0 1px rgba(60,66,87,.04),0 2px 5px rgba(60,66,87,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg);color:var(--body);
+    font-family:var(--sans);font-size:14px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    padding:40px 24px 72px;
+  }
+  .wrap{max-width:860px;margin:0 auto}
+
+  /* header */
+  header{padding-bottom:22px;margin-bottom:28px;border-bottom:1px solid var(--line)}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:8px;
+    font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--faint);margin-bottom:14px;
+  }
+  .eyebrow .d{width:5px;height:5px;background:var(--accent);transform:rotate(45deg)}
+  header h1{margin:0;font-size:27px;font-weight:680;letter-spacing:-.02em;color:var(--ink)}
+  header h1 .accent{color:var(--accent)}
+  header p{margin:10px 0 0;font-size:14.5px;color:var(--muted);max-width:580px}
+
+  /* panels */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);margin-bottom:16px}
+  .ttl{
+    display:flex;align-items:center;gap:11px;
+    padding:13px 20px;border-bottom:1px solid var(--line2);
+  }
+  .ttl .num{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--accent);letter-spacing:.05em}
+  .ttl h2{margin:0;font-size:11.5px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.08em}
+  .ttl .sub{font-size:12px;color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto}
+  .body{padding:20px}
+
+  /* drop zone */
+  #drop{
+    border:1px dashed var(--line-strong);border-radius:var(--r);padding:34px 20px;text-align:center;
+    color:var(--muted);cursor:pointer;transition:.14s;background:#fcfdff;
+  }
+  #drop:hover{border-color:var(--accent);color:var(--ink2)}
+  #drop.over{border-color:var(--accent);border-style:solid;background:var(--accent-soft);color:var(--ink)}
+  #drop b{color:var(--accent);font-weight:600}
+  #drop .hint{display:block;margin-top:7px;font-size:12px;color:var(--faint)}
+  .meta{display:flex;flex-wrap:wrap;gap:0;margin-top:16px;border:1px solid var(--line2);border-radius:var(--r);overflow:hidden}
+  .meta span{flex:1;min-width:140px;padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);border-right:1px solid var(--line2)}
+  .meta span:last-child{border-right:0}
+  .meta b{display:block;margin-top:3px;font-family:var(--mono);font-size:13px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:600}
+
+  /* video + crop */
+  .vidwrap{position:relative;display:block;width:100%;background:#1a1f36;border-radius:var(--r);overflow:hidden;border:1px solid var(--line)}
+  video{display:block;width:100%;height:auto}
+  #cropLayer{position:absolute;inset:0;cursor:crosshair;display:none}
+  #cropLayer.active{display:block}
+  #cropBox{position:absolute;border:1.5px solid var(--accent);background:var(--accent-soft);display:none}
+  #cropBox .tag{position:absolute;top:-22px;left:0;font-family:var(--mono);font-size:10.5px;color:#fff;background:var(--accent);padding:2px 6px;border-radius:3px;white-space:nowrap}
+
+  /* form controls */
+  .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-size:11px;font-weight:600;color:var(--ink2);text-transform:uppercase;letter-spacing:.05em}
+  input[type=text],textarea,select{
+    background:#fff;border:1px solid var(--line-strong);color:var(--ink);
+    font-family:var(--mono);font-size:13px;padding:8px 11px;border-radius:var(--r);outline:none;
+    transition:border-color .12s, box-shadow .12s;
+  }
+  select{font-family:var(--sans);font-weight:500}
+  input[type=text]:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+  input[type=text]{width:128px}
+  textarea{width:100%;min-height:88px;resize:vertical;line-height:1.7}
+  input[type=range]{accent-color:var(--accent);width:168px}
+
+  button{
+    font-family:var(--sans);font-size:13px;font-weight:600;
+    background:#fff;color:var(--ink);border:1px solid var(--line-strong);
+    padding:8px 15px;border-radius:var(--r);cursor:pointer;transition:.12s;
+  }
+  button:hover{border-color:var(--faint);background:#fbfcfe}
+  button:active{background:#f4f7fa}
+  button:disabled{opacity:.4;cursor:not-allowed;background:#fff;border-color:var(--line)}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button.primary:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
+  button.ghost{background:transparent}
+  button.warn{color:var(--red);border-color:var(--red-soft)}
+  button.warn:hover{background:#fdf2f5;border-color:var(--red)}
+  .btnrow{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;align-items:center}
+
+  .hint2{font-size:12px;color:var(--faint);margin-top:8px}
+  .pill{display:inline-flex;align-items:center;font-family:var(--mono);background:var(--accent-soft);color:var(--accent);border-radius:3px;padding:4px 9px;font-size:11.5px;font-weight:600}
+
+  /* log */
+  #log{
+    background:#1a1f36;border:1px solid var(--ink);border-radius:var(--r);
+    padding:11px 13px;font-family:var(--mono);font-size:12.5px;color:#5ee9b5;
+    min-height:20px;white-space:pre-wrap;word-break:break-word;
+  }
+  #log .err{color:#ff8aa8}
+  #log .muted{color:#8792a2}
+
+  /* results */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(196px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:#fff;transition:.12s}
+  .card:hover{border-color:var(--line-strong);box-shadow:var(--shadow)}
+  .card img{display:block;width:100%;height:auto;background:#1a1f36}
+  .card .cap{display:flex;justify-content:space-between;align-items:center;padding:8px 11px;border-top:1px solid var(--line2);font-size:12px}
+  .card .cap b{font-family:var(--mono);color:var(--ink);font-weight:600}
+  .card .cap a{cursor:pointer;color:var(--accent);text-decoration:none;font-weight:600;font-size:11.5px}
+  .card .cap a:hover{color:var(--accent-dark)}
+  .resCount{font-family:var(--mono);font-size:11px;color:var(--faint);font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto}
+
+  footer{color:var(--faint);font-size:11.5px;text-align:center;margin-top:10px;font-family:var(--mono);letter-spacing:.02em}
+  code{font-family:var(--mono);background:#fff;padding:1px 5px;border-radius:3px;color:var(--accent);border:1px solid var(--line);font-size:.9em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <span class="eyebrow"><span class="d"></span> local · no upload · offline</span>
+    <h1>frame<span class="accent">grab</span></h1>
+    <p>Drop a video, mark the moments that matter, and extract small, clean frames. Everything runs in your browser — the file never leaves your device.</p>
+  </header>
+
+  <!-- 1. SOURCE -->
+  <div class="panel">
+    <div class="ttl"><span class="num">01</span><h2>Source</h2></div>
+    <div class="body">
+      <div id="drop">
+        <b>Click to choose</b> a video file, or drop one here
+        <span class="hint">mp4 · mov · webm · mkv — stays on your machine</span>
+      </div>
+      <input type="file" id="file" accept="video/*" style="display:none">
+      <div class="meta" id="meta" style="display:none">
+        <span>File<b id="mName">—</b></span>
+        <span>Duration<b id="mDur">—</b></span>
+        <span>Resolution<b id="mRes">—</b></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. PREVIEW / CROP -->
+  <div class="panel" id="pvPanel" style="display:none">
+    <div class="ttl"><span class="num">02</span><h2>Preview &amp; Crop</h2><span class="sub">scrub to find moments · optional crop for tight shots</span></div>
+    <div class="body">
+      <div class="vidwrap" id="vidwrap">
+        <video id="video" preload="auto" playsinline></video>
+        <div id="cropLayer"><div id="cropBox"><span class="tag"></span></div></div>
+      </div>
+      <div class="btnrow">
+        <button id="capBtn" class="primary">+ Capture current time</button>
+        <button id="cropToggle" class="ghost">Crop: off</button>
+        <button id="cropClear" class="ghost warn" style="display:none">Clear crop</button>
+        <span class="pill" id="cropInfo" style="display:none">crop&nbsp;<b id="cropDims" style="margin-left:5px">—</b></span>
+      </div>
+      <div class="hint2">The crop is stored as a fraction of the frame, so it applies cleanly to every captured timestamp.</div>
+    </div>
+  </div>
+
+  <!-- 3. TIMESTAMPS -->
+  <div class="panel" id="tsPanel" style="display:none">
+    <div class="ttl"><span class="num">03</span><h2>Timestamps</h2></div>
+    <div class="body">
+      <div class="row" style="margin-bottom:18px">
+        <div class="field"><label>Interval — start</label><input type="text" id="iStart" placeholder="39:00"></div>
+        <div class="field"><label>End</label><input type="text" id="iEnd" placeholder="59:28"></div>
+        <div class="field"><label>Every (sec)</label><input type="text" id="iStep" placeholder="30" style="width:96px"></div>
+        <button id="genInterval" class="ghost">Add interval →</button>
+      </div>
+      <div class="field">
+        <label>Timestamp list — one per line <span style="font-weight:400;color:var(--faint);text-transform:none;letter-spacing:0">(mm:ss, h:mm:ss, or raw seconds)</span></label>
+        <textarea id="tsList" placeholder="39:12&#10;42:05&#10;53:30&#10;57:14"></textarea>
+      </div>
+      <div class="hint2" id="tsCount">0 valid timestamps</div>
+    </div>
+  </div>
+
+  <!-- 4. OUTPUT -->
+  <div class="panel" id="outPanel" style="display:none">
+    <div class="ttl"><span class="num">04</span><h2>Output</h2></div>
+    <div class="body">
+      <div class="row">
+        <div class="field">
+          <label>Max width (px)</label>
+          <select id="maxW">
+            <option value="320">320 — tiny</option>
+            <option value="480" selected>480 — small</option>
+            <option value="640">640 — medium</option>
+            <option value="960">960 — large</option>
+            <option value="0">native (no resize)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Format</label>
+          <select id="fmt">
+            <option value="image/jpeg" selected>JPEG (smaller)</option>
+            <option value="image/png">PNG (lossless)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Timestamp label</label>
+          <select id="stamp">
+            <option value="on" selected>On frame</option>
+            <option value="off">None</option>
+          </select>
+        </div>
+        <div class="field" id="qField">
+          <label>JPEG quality — <span id="qVal">0.70</span></label>
+          <input type="range" id="quality" min="0.3" max="0.95" step="0.05" value="0.7">
+        </div>
+      </div>
+      <div class="btnrow">
+        <button id="grab" class="primary" disabled>▶ Grab frames</button>
+        <button id="saveAll" class="ghost" disabled>↓ Save all</button>
+        <button id="dlAll" class="ghost" disabled>↓ Contact sheet</button>
+        <button id="clear" class="ghost" disabled>Clear results</button>
+      </div>
+      <div style="margin-top:16px"><div id="log"><span class="muted">Idle — load a video to begin.</span></div></div>
+    </div>
+  </div>
+
+  <!-- 5. RESULTS -->
+  <div class="panel" id="resPanel" style="display:none">
+    <div class="ttl"><span class="num">05</span><h2>Frames</h2><span class="resCount" id="resCount"></span></div>
+    <div class="body">
+      <div class="grid" id="grid"></div>
+    </div>
+  </div>
+
+  <footer>single file · no dependencies · works offline · your video never leaves your device</footer>
+</div>
+
+<canvas id="canvas" style="display:none"></canvas>
+
+<script>
+(function(){
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const video = $('video'), canvas = $('canvas'), ctx = canvas.getContext('2d');
+  let baseName = 'frame';
+  let crop = null; // {x,y,w,h} fractions
+  let results = []; // {t, url, ext}
+  let stampOn = true;
+
+  function roundRect(c,x,y,w,h,r){
+    if(c.roundRect){ c.beginPath(); c.roundRect(x,y,w,h,r); return; }
+    c.beginPath(); c.moveTo(x+r,y);
+    c.arcTo(x+w,y,x+w,y+h,r); c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r); c.arcTo(x,y,x+w,y,r); c.closePath();
+  }
+  function stampTime(t){
+    const label = fmtLabel(t);
+    const fs = Math.max(11, Math.round(canvas.width*0.04));
+    ctx.font = `600 ${fs}px ui-monospace, monospace`;
+    const padX = Math.round(fs*0.6), padY = Math.round(fs*0.4);
+    const tw = ctx.measureText(label).width;
+    const bw = tw + padX*2, bh = fs + padY*2, m = Math.max(6, Math.round(canvas.width*0.025));
+    const x = m, y = canvas.height - m - bh;
+    ctx.fillStyle = 'rgba(26,31,54,.82)';
+    roundRect(ctx, x, y, bw, bh, Math.round(fs*0.3)); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+    ctx.fillText(label, x+padX, y+bh/2+1);
+  }
+
+  /* ---------- time helpers ---------- */
+  function parseTime(s){
+    s = (s||'').trim();
+    if(!s) return null;
+    if(/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);      // raw seconds
+    const parts = s.split(':').map(p=>p.trim());
+    if(parts.some(p=>p==='' || isNaN(p))) return null;
+    let sec = 0;
+    for(const p of parts){ sec = sec*60 + parseFloat(p); }
+    return sec;
+  }
+  function fmtLabel(t){
+    t = Math.max(0, Math.floor(t));
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+    const mm = String(m).padStart(2,'0'), ss = String(s).padStart(2,'0');
+    return h>0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  }
+  function fmtFile(t){
+    t = Math.max(0, Math.floor(t));
+    const h = Math.floor(t/3600), m = Math.floor((t%3600)/60), s = t%60;
+    return `${String(h).padStart(2,'0')}-${String(m).padStart(2,'0')}-${String(s).padStart(2,'0')}`;
+  }
+
+  /* ---------- logging ---------- */
+  function log(msg, cls){ $('log').innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
+
+  /* ---------- file loading ---------- */
+  const drop = $('drop');
+  drop.addEventListener('click', ()=> $('file').click());
+  $('file').addEventListener('change', e=>{ if(e.target.files[0]) loadFile(e.target.files[0]); });
+  ['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+  ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+  drop.addEventListener('drop', e=>{ const f=e.dataTransfer.files[0]; if(f && f.type.startsWith('video')) loadFile(f); else log('Not a video file.','err'); });
+
+  function loadFile(f){
+    baseName = f.name.replace(/\.[^.]+$/,'').replace(/[^\w\-]+/g,'_').slice(0,40) || 'frame';
+    const url = URL.createObjectURL(f);
+    video.src = url;
+    video.controls = true;
+    video.addEventListener('loadedmetadata', ()=>{
+      $('mName').textContent = f.name;
+      $('mDur').textContent = fmtLabel(video.duration) + ` (${video.duration.toFixed(1)}s)`;
+      $('mRes').textContent = `${video.videoWidth}×${video.videoHeight}`;
+      $('meta').style.display='flex';
+      ['pvPanel','tsPanel','outPanel'].forEach(p=>$(p).style.display='block');
+      drop.querySelector('b').textContent = 'Choose a different video';
+      log('Loaded. Mark timestamps in section 03, then grab.', 'muted');
+      refreshTsCount();
+    }, {once:true});
+    video.addEventListener('error', ()=>log('Could not decode this file — try mp4/webm, or convert it first.','err'), {once:true});
+  }
+
+  /* ---------- capture current time ---------- */
+  $('capBtn').addEventListener('click', ()=>{
+    const ta = $('tsList');
+    const line = fmtLabel(video.currentTime);
+    ta.value = ta.value.trim() ? ta.value.replace(/\s*$/,'') + '\n' + line : line;
+    refreshTsCount();
+    log(`Added current time → ${line}`, 'muted');
+  });
+
+  /* ---------- crop ---------- */
+  const cropLayer=$('cropLayer'), cropBox=$('cropBox'), vidwrap=$('vidwrap');
+  let drawing=false, sx=0, sy=0;
+  $('cropToggle').addEventListener('click', function(){
+    const on = !cropLayer.classList.contains('active');
+    cropLayer.classList.toggle('active', on);
+    this.textContent = 'Crop: ' + (on?'on — drag a box':'off');
+    if(on){ video.controls=false; } else { video.controls=true; }
+  });
+  $('cropClear').addEventListener('click', clearCrop);
+  function clearCrop(){
+    crop=null; cropBox.style.display='none';
+    $('cropClear').style.display='none'; $('cropInfo').style.display='none';
+  }
+  cropLayer.addEventListener('mousedown', e=>{
+    const r = vidwrap.getBoundingClientRect();
+    drawing=true; sx=e.clientX-r.left; sy=e.clientY-r.top;
+    cropBox.style.display='block';
+    cropBox.style.left=sx+'px'; cropBox.style.top=sy+'px'; cropBox.style.width='0'; cropBox.style.height='0';
+  });
+  cropLayer.addEventListener('mousemove', e=>{
+    if(!drawing) return;
+    const r = vidwrap.getBoundingClientRect();
+    const cx=Math.max(0,Math.min(e.clientX-r.left,r.width));
+    const cy=Math.max(0,Math.min(e.clientY-r.top,r.height));
+    const x=Math.min(sx,cx), y=Math.min(sy,cy), w=Math.abs(cx-sx), h=Math.abs(cy-sy);
+    cropBox.style.left=x+'px'; cropBox.style.top=y+'px'; cropBox.style.width=w+'px'; cropBox.style.height=h+'px';
+  });
+  cropLayer.addEventListener('mouseup', e=>{
+    if(!drawing) return; drawing=false;
+    const r = vidwrap.getBoundingClientRect();
+    const bx=cropBox.offsetLeft, by=cropBox.offsetTop, bw=cropBox.offsetWidth, bh=cropBox.offsetHeight;
+    if(bw<8 || bh<8){ clearCrop(); return; }
+    crop = { x:bx/r.width, y:by/r.height, w:bw/r.width, h:bh/r.height };
+    const pw=Math.round(crop.w*video.videoWidth), ph=Math.round(crop.h*video.videoHeight);
+    cropBox.querySelector('.tag').textContent = `${pw}×${ph}`;
+    $('cropDims').textContent = `${pw}×${ph}px`;
+    $('cropClear').style.display='inline-block'; $('cropInfo').style.display='inline-flex';
+  });
+
+  /* ---------- timestamps ---------- */
+  $('genInterval').addEventListener('click', ()=>{
+    const a=parseTime($('iStart').value), b=parseTime($('iEnd').value), step=parseFloat($('iStep').value);
+    if(a==null||b==null||!(step>0)||b<=a){ log('Check interval inputs (start < end, step > 0).','err'); return; }
+    const lines=[];
+    for(let t=a; t<=b+1e-6; t+=step) lines.push(fmtLabel(t));
+    const ta=$('tsList');
+    ta.value = (ta.value.trim()? ta.value.replace(/\s*$/,'')+'\n':'') + lines.join('\n');
+    refreshTsCount();
+    log(`Added ${lines.length} timestamps from interval.`, 'muted');
+  });
+  $('tsList').addEventListener('input', refreshTsCount);
+  function resolvedTimes(){
+    const dur = video.duration || Infinity;
+    const set = new Map();
+    $('tsList').value.split('\n').forEach(l=>{
+      const t = parseTime(l);
+      if(t!=null && t>=0 && t<=dur){ set.set(Math.round(t*1000)/1000, true); }
+    });
+    return [...set.keys()].sort((x,y)=>x-y);
+  }
+  function refreshTsCount(){
+    const n = resolvedTimes().length;
+    $('tsCount').textContent = `${n} valid timestamp${n===1?'':'s'}`;
+    $('grab').disabled = n===0;
+  }
+
+  /* ---------- output settings ---------- */
+  $('quality').addEventListener('input', e=> $('qVal').textContent = parseFloat(e.target.value).toFixed(2));
+  $('fmt').addEventListener('change', e=> $('qField').style.display = e.target.value==='image/jpeg'?'flex':'none');
+
+  /* ---------- seek + draw ---------- */
+  function seekTo(t){
+    return new Promise(res=>{
+      let done=false;
+      const finish=()=>{ if(done) return; done=true; video.removeEventListener('seeked',onS); res(); };
+      const onS=()=>finish();
+      video.addEventListener('seeked', onS);
+      if(Math.abs(video.currentTime - t) < 0.004){ setTimeout(finish,40); }
+      else { try{ video.currentTime = t; }catch(_){ finish(); } }
+      setTimeout(finish, 4000); // safety fallback
+    });
+  }
+  function drawFrame(t){
+    const vw=video.videoWidth, vh=video.videoHeight;
+    let srx=0, sry=0, srw=vw, srh=vh;
+    if(crop){ srx=crop.x*vw; sry=crop.y*vh; srw=crop.w*vw; srh=crop.h*vh; }
+    const maxW = parseInt($('maxW').value,10);
+    let dw=srw, dh=srh;
+    if(maxW>0 && srw>maxW){ dw=maxW; dh=Math.round(srh*(maxW/srw)); }
+    canvas.width=Math.max(1,Math.round(dw)); canvas.height=Math.max(1,Math.round(dh));
+    ctx.drawImage(video, srx,sry,srw,srh, 0,0,canvas.width,canvas.height);
+    if(stampOn) stampTime(t);
+    const fmt=$('fmt').value, q=parseFloat($('quality').value);
+    return canvas.toDataURL(fmt, fmt==='image/jpeg'?q:undefined);
+  }
+
+  /* ---------- grab loop ---------- */
+  $('grab').addEventListener('click', async ()=>{
+    const times = resolvedTimes();
+    if(!times.length){ log('No valid timestamps.','err'); return; }
+    const btn=$('grab'); btn.disabled=true; video.pause();
+    const wasControls=video.controls;
+    stampOn = $('stamp').value==='on';
+    const ext = $('fmt').value==='image/png'?'png':'jpg';
+    results=[]; $('grid').innerHTML='';
+    for(let i=0;i<times.length;i++){
+      const t=times[i];
+      log(`[capturing] ${i+1}/${times.length} @ ${fmtLabel(t)} …`);
+      await seekTo(t);
+      await new Promise(r=>requestAnimationFrame(r)); // ensure frame painted
+      let url;
+      try{ url=drawFrame(t); }
+      catch(err){ log(`Failed at ${fmtLabel(t)} — ${err.message}`,'err'); btn.disabled=false; return; }
+      results.push({t, url, ext});
+      addCard(t, url, ext);
+    }
+    video.controls=wasControls;
+    log(`Done — ${results.length} frame${results.length===1?'':'s'} captured.`, null);
+    $('resCount').textContent = `${results.length} frame${results.length===1?'':'s'}`;
+    btn.disabled=false; $('saveAll').disabled=false; $('dlAll').disabled=false; $('clear').disabled=false;
+    $('resPanel').style.display='block';
+  });
+
+  function addCard(t, url, ext){
+    const fname = `${baseName}_${fmtFile(t)}.${ext}`;
+    const card=document.createElement('div'); card.className='card';
+    const img=document.createElement('img'); img.src=url; img.alt=fmtLabel(t);
+    const cap=document.createElement('div'); cap.className='cap';
+    const b=document.createElement('b'); b.textContent=fmtLabel(t);
+    const dl=document.createElement('a'); dl.textContent='↓ save'; dl.href=url; dl.download=fname;
+    cap.appendChild(b); cap.appendChild(dl);
+    card.appendChild(img); card.appendChild(cap);
+    $('grid').appendChild(card);
+  }
+
+  $('clear').addEventListener('click', ()=>{
+    results=[]; $('grid').innerHTML=''; $('resCount').textContent='';
+    $('saveAll').disabled=true; $('dlAll').disabled=true; $('clear').disabled=true; $('resPanel').style.display='none';
+    log('Results cleared.', 'muted');
+  });
+
+  /* ---------- save all (individual files) ---------- */
+  $('saveAll').addEventListener('click', async ()=>{
+    if(!results.length) return;
+    const btn=$('saveAll'); btn.disabled=true;
+    for(let i=0;i<results.length;i++){
+      const r=results[i];
+      log(`[saving] ${i+1}/${results.length} → ${baseName}_${fmtFile(r.t)}.${r.ext}`);
+      const a=document.createElement('a');
+      a.href=r.url; a.download=`${baseName}_${fmtFile(r.t)}.${r.ext}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      await new Promise(res=>setTimeout(res,170)); // stagger so the browser doesn't drop downloads
+    }
+    log(`Saved ${results.length} file${results.length===1?'':'s'} — check your downloads folder. (Allow multiple downloads if prompted.)`, null);
+    btn.disabled=false;
+  });
+
+  /* ---------- contact sheet ---------- */
+  $('dlAll').addEventListener('click', ()=>{
+    if(!results.length) return;
+    log('Building contact sheet …');
+    const n=results.length;
+    const cols=Math.min(4, Math.max(1, Math.round(Math.sqrt(n))));
+    const rows=Math.ceil(n/cols);
+    const cellW=360, pad=24, gap=14, labelH=30;
+    const tmp=new Image();
+    tmp.onload=()=>{
+      const ar = tmp.naturalHeight/tmp.naturalWidth;
+      const cellH = Math.round(cellW*ar);
+      const W = pad*2 + cols*cellW + (cols-1)*gap;
+      const H = pad*2 + rows*(cellH+labelH) + (rows-1)*gap;
+      const cs=document.createElement('canvas'); cs.width=W; cs.height=H;
+      const c=cs.getContext('2d');
+      c.fillStyle='#ffffff'; c.fillRect(0,0,W,H);
+      let loaded=0;
+      results.forEach((r,idx)=>{
+        const im=new Image();
+        im.onload=()=>{
+          const col=idx%cols, row=Math.floor(idx/cols);
+          const x=pad+col*(cellW+gap), y=pad+row*(cellH+labelH+gap);
+          c.drawImage(im, x, y, cellW, cellH);
+          c.fillStyle='#f7f9fc'; c.fillRect(x,y+cellH,cellW,labelH);
+          c.strokeStyle='#e3e8ee'; c.lineWidth=1; c.strokeRect(x+.5,y+.5,cellW-1,cellH+labelH-1);
+          c.fillStyle='#1a1f36';
+          c.font='600 15px ui-monospace, monospace';
+          c.textBaseline='middle';
+          c.fillText(fmtLabel(r.t), x+12, y+cellH+labelH/2+1);
+          if(++loaded===results.length){
+            const a=document.createElement('a');
+            a.href=cs.toDataURL('image/jpeg',0.85);
+            a.download=`${baseName}_contactsheet.jpg`;
+            a.click();
+            log(`Contact sheet saved — ${results.length} frames, ${W}×${H}.`, null);
+          }
+        };
+        im.src=r.url;
+      });
+    };
+    tmp.src=results[0].url;
+  });
+
+})();
+</script>
+</body>
+</html>
