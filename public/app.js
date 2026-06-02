@@ -4,9 +4,11 @@
   const api = (path, opts) => fetch(path, opts).then((r) => r.json());
 
   let tab = 'url';
+  let mode = 'scene';
   let job = null;          // latest job view
   let pollTimer = null;
   let previewUrl = null;   // object URL for local preview
+  let previewName = null;  // basename of the previewed file (no path)
 
   // ---------- time helpers (mirror server) ----------
   function parseTime(s) {
@@ -25,10 +27,15 @@
     return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
   }
 
-  function log(msg, cls) { $('log').innerHTML = cls ? `<span class="${cls}">${msg}</span>` : msg; }
-
   function escapeHtml(s) {
     return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  }
+
+  // Transient one-line status next to the Run button.
+  function flash(msg, cls) {
+    const s = $('status');
+    s.textContent = msg || '';
+    s.className = 'resCount' + (cls ? ' ' + cls : '');
   }
 
   // Paint the full server log (newest at bottom); keep pinned to bottom while scrolled there.
@@ -86,7 +93,9 @@
   function setTab(t) {
     tab = t;
     $('tabUrl').classList.toggle('on', t === 'url');
+    $('tabUrl').setAttribute('aria-selected', t === 'url');
     $('tabLocal').classList.toggle('on', t === 'local');
+    $('tabLocal').setAttribute('aria-selected', t === 'local');
     $('paneUrl').style.display = t === 'url' ? '' : 'none';
     $('paneLocal').style.display = t === 'local' ? '' : 'none';
     refreshRunState();
@@ -94,18 +103,36 @@
   $('tabUrl').onclick = () => setTab('url');
   $('tabLocal').onclick = () => setTab('local');
 
-  // ---------- mode ----------
-  function setMode() {
-    const m = $('mode').value;
+  // ---------- mode (card radiogroup) ----------
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('.modecard').forEach((c) => {
+      const on = c.dataset.mode === m;
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
     $('budgetField').style.display = m === 'scene' ? '' : 'none';
     $('everyField').style.display = m === 'interval' ? '' : 'none';
-    // Clip start/end apply to every mode, so they stay visible.
+    $('modeFields').style.display = (m === 'scene' || m === 'interval') ? '' : 'none';
     $('manualBox').style.display = m === 'manual' ? '' : 'none';
     refreshRunState();
   }
-  $('mode').onchange = setMode;
+  document.querySelectorAll('.modecard').forEach((c) => {
+    c.addEventListener('click', () => setMode(c.dataset.mode));
+  });
 
-  // ---------- local preview (drag/drop or picker for scrubbing) ----------
+  // ---------- local file: Browse… (native picker) + drop-to-preview ----------
+  $('browseBtn').onclick = async () => {
+    const b = $('browseBtn'); const prev = b.textContent;
+    b.disabled = true; b.textContent = 'Opening…';
+    try {
+      const r = await api('/api/pick');
+      if (r && r.path) { $('localPath').value = r.path; updateFileCard(); refreshRunState(); }
+      else if (r && r.error) { flash('Picker: ' + r.error, 'err'); }
+    } catch { flash('Could not open the file picker.', 'err'); }
+    b.disabled = false; b.textContent = prev;
+  };
+
   const drop = $('drop');
   drop.onclick = () => {
     const inp = document.createElement('input');
@@ -122,24 +149,43 @@
   function loadPreview(f) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(f);
+    previewName = f.name;
     const v = $('video');
     v.src = previewUrl;
     $('vidwrap').classList.remove('hide');
-    // prefill path field with the file name as a hint (browser can't give the full path)
-    if (!$('localPath').value) $('localPath').value = f.name;
-    $('localPath').placeholder = 'paste the FULL path to ' + f.name;
-    $('capBtn').disabled = false;
-    $('capHint').textContent = 'scrub the video, then capture the current time';
-    log(`Preview loaded — paste the full path to “${f.name}” in the box above so the server can read it.`, 'muted');
+    $('markRow').hidden = false;
+    updateFileCard();
+    refreshRunState();
+    flash('Preview loaded — click Browse… to set its path for extraction.', 'muted');
   }
 
-  // capture current preview time -> manual list
+  // Reflect the local-file state: a real path (ready) vs preview-only (needs Browse…).
+  function updateFileCard() {
+    const p = $('localPath').value.trim();
+    const fc = $('fileCard');
+    if (p) {
+      fc.hidden = false; fc.className = 'filecard ok';
+      $('fcName').textContent = p.split(/[\\/]/).pop();
+      $('fcState').textContent = 'ready';
+    } else if (previewName) {
+      fc.hidden = false; fc.className = 'filecard warn';
+      $('fcName').textContent = previewName;
+      $('fcState').textContent = 'set path via Browse…';
+    } else {
+      fc.hidden = true;
+    }
+  }
+
+  // Mark the current preview time -> Manual timestamp list (switches to Manual mode).
   $('capBtn').onclick = () => {
     const v = $('video');
+    if (!v.src) return;
+    if (mode !== 'manual') setMode('manual');
     const line = fmtLabel(v.currentTime);
     const ta = $('tsList');
     ta.value = ta.value.trim() ? ta.value.replace(/\s*$/, '') + '\n' + line : line;
-    log(`Added ${line} to timestamps.`, 'muted');
+    refreshRunState();
+    flash('Marked ' + line, 'muted');
   };
 
   // ---------- run state ----------
@@ -153,42 +199,53 @@
   }
   function refreshRunState() {
     const src = currentSource();
+    $('methodPanel').classList.toggle('locked', !src);
     let ok = !!src;
     if (tab === 'url' && window._urlReady === false) ok = false;
+    if (src && mode === 'manual') {
+      const has = $('tsList').value.split('\n').some((l) => parseTime(l) != null);
+      $('manualErr').style.display = has ? 'none' : 'flex';
+      if (!has) ok = false;
+    } else {
+      $('manualErr').style.display = 'none';
+    }
     $('run').disabled = !ok;
   }
   $('url').oninput = refreshRunState;
-  $('localPath').oninput = refreshRunState;
+  $('localPath').oninput = () => { updateFileCard(); refreshRunState(); };
+  $('tsList').oninput = refreshRunState;
 
   // ---------- run a job ----------
   $('run').onclick = async () => {
     const src = currentSource();
     if (!src) return;
-    const mode = $('mode').value;
     const body = { ...src, method: mode, ext: $('ext').value, wantSubs: $('wantSubs').checked };
     if (mode === 'scene') body.budget = parseInt($('budget').value, 10) || 15;
     if (mode === 'interval') body.every = parseFloat($('every').value) || 30;
-    // clip window — applies to all modes (only the section is fetched/scanned)
     const start = parseTime($('start').value);
     const end = parseTime($('end').value);
     if (start != null && start >= 0) body.start = start;
     if (end != null && end >= 0) body.end = end;
     if (body.start != null && body.end != null && body.end <= body.start) {
-      log('Clip end must be after clip start.', 'err'); $('run').disabled = false; return;
+      flash('Clip end must be after clip start.', 'err'); return;
     }
     if (mode === 'manual') {
       const times = $('tsList').value.split('\n').map(parseTime).filter((t) => t != null && t >= 0);
-      if (!times.length) { log('Add at least one timestamp for manual mode.', 'err'); return; }
+      if (!times.length) { flash('Add at least one timestamp.', 'err'); return; }
       body.timestamps = times;
     }
+    // enter running state
     $('run').disabled = true;
+    $('errLine').hidden = true;
+    $('progress').hidden = false;
+    $('logwrap').hidden = false; $('logwrap').open = false;
     $('log').innerHTML = '';
-    log('Starting…');
     setBar({ phase: 'starting', ratio: null });
+    flash('Starting…', 'muted');
     let resp;
     try { resp = await api('/api/jobs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); }
-    catch (e) { log('Request failed: ' + e.message, 'err'); $('run').disabled = false; return; }
-    if (resp.error) { log('Error: ' + resp.error, 'err'); $('run').disabled = false; return; }
+    catch (e) { flash('Request failed: ' + e.message, 'err'); $('run').disabled = false; return; }
+    if (resp.error) { flash('Error: ' + resp.error, 'err'); $('run').disabled = false; return; }
     poll(resp.jobId);
   };
 
@@ -198,22 +255,31 @@
       let v;
       try { v = await api('/api/jobs/' + id); } catch { return; }
       job = v;
-      $('status').textContent = v.status;
+      const last = (v.log && v.log.length) ? v.log[v.log.length - 1] : '';
+      flash(last, v.status === 'error' ? 'err' : 'muted');
       renderLog(v.log);
       setBar(v.progress, v.status);
+      if (v.status === 'error') {
+        const e = $('errLine'); e.hidden = false; e.textContent = v.error || last || 'Something went wrong.';
+      }
       if (v.status === 'done' || v.status === 'error') {
         clearInterval(pollTimer); pollTimer = null;
         $('run').disabled = false;
         if (v.status === 'done') render(v);
       }
-    }, 600);
+    }, 500);
   }
 
   // ---------- render results ----------
   function render(v) {
-    $('resPanel').style.display = 'block';
-    const win = v.window ? ` · window ${fmtLabel(v.window.start)}–${v.window.end != null ? fmtLabel(v.window.end) : 'end'}` : '';
-    $('resCount').textContent = `${v.frames.length} frame${v.frames.length === 1 ? '' : 's'}${win} · output/${v.pkgName}/`;
+    const panel = $('resPanel');
+    panel.style.display = 'block';
+    panel.classList.remove('enter'); void panel.offsetWidth; panel.classList.add('enter');
+
+    const win = v.window ? ` · ${fmtLabel(v.window.start)}–${v.window.end != null ? fmtLabel(v.window.end) : 'end'}` : '';
+    const n = v.frames.length;
+    $('resCount').textContent = `${n} frame${n === 1 ? '' : 's'}`;
+    $('resCtx').textContent = `${n} frames · ${v.method || ''}${win} · output/${v.pkgName}/`;
 
     // contact sheet (cache-bust: it can be rebuilt on reselect/manual-add)
     if (v.sheet) {
@@ -223,23 +289,32 @@
     } else {
       $('sheetwrap').style.display = 'none';
     }
+
     const grid = $('grid'); grid.innerHTML = '';
     v.frames.forEach((f) => {
       const card = document.createElement('div'); card.className = 'fcard'; card.dataset.index = f.index;
-      const img = document.createElement('img'); img.src = f.url; img.alt = fmtLabel(f.tSec);
+      const img = document.createElement('img'); img.src = f.url; img.alt = fmtLabel(f.tSec); img.loading = 'lazy';
       img.onclick = () => window.open(f.url, '_blank');
       const cap = document.createElement('div'); cap.className = 'cap';
       const b = document.createElement('b'); b.textContent = fmtLabel(f.tSec);
       const keep = document.createElement('label'); keep.className = 'keep';
-      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.style.marginRight = '4px';
-      cb.onchange = () => { card.classList.toggle('dropped', !cb.checked); $('applySel').style.display = 'inline-block'; };
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true;
+      cb.onchange = () => { card.classList.toggle('dropped', !cb.checked); updateApplyState(); };
       keep.appendChild(cb); keep.appendChild(document.createTextNode('keep'));
       cap.appendChild(b); cap.appendChild(keep);
       card.appendChild(img); card.appendChild(cap);
       if (f.transcript) { const tx = document.createElement('div'); tx.className = 'tx'; tx.textContent = '“' + f.transcript + '”'; card.appendChild(tx); }
       grid.appendChild(card);
     });
-    $('applySel').style.display = 'none';
+    updateApplyState();
+  }
+
+  function updateApplyState() {
+    const cards = [...document.querySelectorAll('.fcard')];
+    const dropped = cards.filter((c) => !c.querySelector('input').checked).length;
+    const btn = $('applySel');
+    btn.disabled = dropped === 0;
+    btn.textContent = dropped > 0 ? `Apply selection (remove ${dropped})` : 'Apply selection';
   }
 
   // save all
@@ -248,7 +323,7 @@
   $('reveal').onclick = async () => {
     if (!job) return;
     const r = await api(`/api/jobs/${job.id}/reveal`);
-    log('Opened ' + (r.path || 'output folder'), 'muted');
+    flash('Opened ' + (r.path || 'output folder'), 'muted');
   };
   // apply selection
   $('applySel').onclick = async () => {
@@ -256,15 +331,17 @@
     const keep = [...document.querySelectorAll('.fcard')]
       .filter((c) => c.querySelector('input').checked)
       .map((c) => parseInt(c.dataset.index, 10));
-    if (!keep.length) { log('Keep at least one frame.', 'err'); return; }
+    if (!keep.length) { flash('Keep at least one frame.', 'err'); return; }
     const v = await api(`/api/jobs/${job.id}/select`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keepIndexes: keep }) });
-    if (v.error) { log(v.error, 'err'); return; }
+    if (v.error) { flash(v.error, 'err'); return; }
     job = v; render(v);
-    log('Selection applied — manifest rewritten.', 'muted');
+    flash('Selection applied — manifest rewritten.', 'muted');
   };
 
   // ---------- init ----------
-  setMode();
+  setMode('scene');
   setTab('url');
+  updateFileCard();
   loadHealth();
+  refreshRunState();
 })();

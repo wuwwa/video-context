@@ -53,6 +53,6 @@ Frames are downscaled to a 1568px long edge; URL downloads are capped at 720p.
 | `OUTPUT_DIR` | `output` | where packages are written |
 | `MAX_FRAMES` | `60` | cap on frames per job |
 | `FRAME_LONG_EDGE` | `1568` | frame long-edge size |
-| `SHEET_FONT` | `Arial` | font family for contact-sheet labels |
+| `SHEET_FONT` | auto | path to a `.ttf` for contact-sheet labels |
 
 [`framegrab.html`](framegrab.html) is an offline, single-file fallback for local files only (no server, no yt-dlp).

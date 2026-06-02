@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, createReadStream } from 'node:fs';
 import { promises as fs } from 'node:fs';
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 
 import { detectTools } from './services/tools.js';
 import {
@@ -99,6 +99,51 @@ app.get('/api/jobs/:id/sheet', (req, res) => {
   if (!existsSync(full)) return res.status(404).end();
   res.sendFile(full);
 });
+
+// --- native file picker: open the OS file dialog, return the chosen absolute path ---
+// Localhost-only (the server binds 127.0.0.1) — lets the Local tab set a real path
+// without the browser's "paste the full path" friction, and without uploading.
+app.get('/api/pick', async (req, res) => {
+  try {
+    res.json(await pickFile());
+  } catch (err) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+function pickFile() {
+  return new Promise((resolve, reject) => {
+    let cmd, args;
+    if (process.platform === 'win32') {
+      const ps = [
+        'Add-Type -AssemblyName System.Windows.Forms;',
+        '$d = New-Object System.Windows.Forms.OpenFileDialog;',
+        "$d.Filter = 'Video files|*.mp4;*.mkv;*.mov;*.webm;*.avi;*.m4v;*.flv;*.wmv|All files|*.*';",
+        "$d.Title = 'Select a video';",
+        '$t = New-Object System.Windows.Forms.Form; $t.TopMost = $true; $t.ShowInTaskbar = $false; $t.Opacity = 0; $t.Show();',
+        'if ($d.ShowDialog($t) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) };',
+        '$t.Close();',
+      ].join(' ');
+      cmd = 'powershell';
+      args = ['-NoProfile', '-STA', '-Command', ps];
+    } else if (process.platform === 'darwin') {
+      cmd = 'osascript';
+      args = ['-e', 'try', '-e', 'POSIX path of (choose file with prompt "Select a video")', '-e', 'end try'];
+    } else {
+      cmd = 'zenity';
+      args = ['--file-selection', '--title=Select a video'];
+    }
+    execFile(cmd, args, { timeout: 5 * 60 * 1000, windowsHide: true }, (err, stdout) => {
+      // A cancel exits non-zero (or empty stdout) — that's not an error, just no pick.
+      const out = (stdout || '').trim();
+      if (out) return resolve({ path: out });
+      if (err && err.code === 'ENOENT') {
+        return reject(new Error(`file picker not available (${cmd} not found)`));
+      }
+      resolve({ cancelled: true });
+    });
+  });
+}
 
 // --- manual: extract one extra frame at tSec into an existing job ---
 app.post('/api/jobs/:id/manual', async (req, res) => {
