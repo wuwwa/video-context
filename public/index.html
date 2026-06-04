@@ -13,7 +13,7 @@
   <header>
     <span class="eyebrow"><span class="d"></span> runs locally · no upload</span>
     <h1>video<span class="accent">·context</span></h1>
-    <p>Extract timestamped frames from any video and hand them to Claude as visual context.</p>
+    <p>Pull timestamped frames from any video for Claude.</p>
   </header>
 
   <!-- health banner -->
@@ -32,7 +32,7 @@
         <div class="row">
           <input type="text" class="grow" id="url" placeholder="https://www.youtube.com/watch?v=…" aria-label="Video URL">
         </div>
-        <div class="hint2" id="urlHint">Paste a video link. Downloaded at ≤720p with subtitles, then frames are extracted.</div>
+        <div class="hint2" id="urlHint">Paste a link. We download it at ≤720p and pull frames.</div>
       </div>
 
       <div id="paneLocal" style="display:none">
@@ -45,13 +45,13 @@
           <span class="fc-state" id="fcState">ready</span>
         </div>
         <div id="drop">
-          <b>or drop a video here</b> to preview &amp; scrub it
-          <span class="hint">the file never uploads — Browse… sets the path the server reads</span>
+          <b>or drop a video here</b> to preview and scrub it
+          <span class="hint">Browse sets the path we read. Nothing uploads.</span>
         </div>
         <div class="vidwrap hide" id="vidwrap"><video id="video" controls preload="metadata" playsinline></video></div>
         <div class="markrow" id="markRow" hidden>
-          <button class="ghost" id="capBtn">⏱ Mark this frame</button>
-          <span class="hint2" id="capHint" style="margin-top:0">scrub the preview, then mark a time — it’s added to the Manual list</span>
+          <button class="ghost" id="capBtn">Mark this frame</button>
+          <span class="hint2" id="capHint" style="margin-top:0">Scrub the preview, then mark a time. It joins the Manual list.</span>
         </div>
       </div>
     </div>
@@ -66,26 +66,26 @@
       <div class="modecards" id="modeCards" role="radiogroup" aria-label="Frame selection mode">
         <button class="modecard on" data-mode="scene" role="radio" aria-checked="true">
           <span class="mc-title">Scene</span>
-          <span class="mc-desc">Detects shot changes. Recommended.</span>
+          <span class="mc-desc">Find shot changes.</span>
         </button>
         <button class="modecard" data-mode="interval" role="radio" aria-checked="false">
           <span class="mc-title">Interval</span>
-          <span class="mc-desc">One frame every N seconds.</span>
+          <span class="mc-desc">Every N seconds.</span>
         </button>
         <button class="modecard" data-mode="manual" role="radio" aria-checked="false">
           <span class="mc-title">Manual</span>
-          <span class="mc-desc">Pick exact timestamps.</span>
+          <span class="mc-desc">Choose exact times.</span>
         </button>
       </div>
 
       <div class="row" id="modeFields">
         <div class="field" id="budgetField">
-          <label for="budget">Target frames (max)</label>
+          <label for="budget">Max frames</label>
           <input type="text" id="budget" value="15" style="width:120px">
-          <span class="fieldhint">up to this many; fewer if the video is short</span>
+          <span class="fieldhint">Up to this many; fewer for short clips.</span>
         </div>
         <div class="field" id="everyField" style="display:none">
-          <label for="every">Interval (seconds)</label>
+          <label for="every">Every (seconds)</label>
           <input type="text" id="every" value="30" style="width:120px">
         </div>
       </div>
@@ -93,7 +93,7 @@
       <!-- manual timestamps -->
       <div id="manualBox" style="display:none">
         <div class="field">
-          <label for="tsList">Timestamps — one per line (mm:ss, h:mm:ss, or seconds)</label>
+          <label for="tsList">Timestamps, one per line (mm:ss, h:mm:ss, or seconds)</label>
           <textarea id="tsList" style="width:100%;min-height:84px" placeholder="0:05&#10;0:32&#10;1:14"></textarea>
         </div>
         <div class="banner err inline" id="manualErr" style="display:none">Add at least one timestamp.</div>
@@ -104,13 +104,13 @@
         <summary>Advanced</summary>
         <div class="advbody">
           <div class="field">
-            <label>Extraction window (optional)</label>
+            <label>Clip window (optional)</label>
             <div class="rangerow">
               <input type="text" id="start" placeholder="0:00" aria-label="Clip start">
               <span class="rangesep">→</span>
               <input type="text" id="end" placeholder="end" aria-label="Clip end">
             </div>
-            <span class="fieldhint">limit frames to a section; for URLs only that section downloads</span>
+            <span class="fieldhint">Limit to a section. For URLs, only that part downloads.</span>
           </div>
           <div class="field">
             <label for="ext">Format</label>
@@ -147,20 +147,20 @@
       <div class="resbar" id="resBar">
         <span class="resctx" id="resCtx"></span>
         <div class="btnrow" style="margin:0">
-          <button class="primary" id="saveAll">Save All (.zip)</button>
+          <button class="primary" id="saveAll">Save all</button>
           <button class="ghost" id="reveal">Reveal folder</button>
           <button class="ghost" id="applySel" disabled>Apply selection</button>
         </div>
       </div>
       <div class="sheetwrap" id="sheetwrap" style="display:none">
-        <div class="sheetcap">Contact sheet — every frame at a glance. Click to open full size.</div>
+        <div class="sheetcap">Every frame in one image. Click to enlarge.</div>
         <a id="sheetLink" target="_blank" rel="noopener"><img id="sheetImg" alt="contact sheet"></a>
       </div>
       <div class="grid" id="grid"></div>
     </div>
   </section>
 
-  <footer>runs locally · <a href="../framegrab.html">offline fallback</a> · frames downscaled to ~1568px for Claude</footer>
+  <footer>runs locally · frames sized for Claude (~1568px) · <a href="../framegrab.html">offline fallback</a></footer>
 </div>
 
 <script src="app.js"></script>

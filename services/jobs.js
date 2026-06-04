@@ -137,13 +137,13 @@ async function run(job) {
 
   // --- resolve source video on disk ---
   if (o.sourceType === 'url') {
-    log(job, 'Fetching video metadata…');
+    log(job, 'Reading video info…');
     setProgress(job, 'metadata');
     const meta = await fetchMeta(o.url);
     job.title = meta.title;
     job.duration = meta.duration;
     const dlDir = path.join(tmpRoot(), job.id);
-    log(job, hasWindow ? 'Downloading window (≤720p)…' : 'Downloading (≤720p)…');
+    log(job, hasWindow ? 'Downloading clip (≤720p)…' : 'Downloading (≤720p)…');
     job.status = 'downloading';
     setProgress(job, 'downloading');
     const { videoPath, subPath, requestedStart } = await download(o.url, dlDir, {
@@ -192,7 +192,7 @@ async function run(job) {
   }
 
   // --- probe ---
-  log(job, 'Probing video…');
+  log(job, 'Reading video…');
   setProgress(job, 'probing');
   const meta = await probe(job.videoPath);
   const clipDur = meta.duration || job.duration; // duration of the file actually on disk
@@ -219,11 +219,11 @@ async function run(job) {
 
   // --- subtitles ---
   if (job.subPath) {
-    log(job, 'Parsing subtitles…');
+    log(job, 'Reading subtitles…');
     setProgress(job, 'subtitles');
     try {
       job.cues = await parseSubs(job.subPath);
-      log(job, `Parsed ${job.cues.length} subtitle cues.`);
+      log(job, `Read ${job.cues.length} subtitle cues.`);
     } catch { job.cues = []; }
   }
 
@@ -238,17 +238,17 @@ async function run(job) {
     timestamps = [...new Set(timestamps)].sort((a, b) => a - b).slice(0, maxFrames());
     if (!timestamps.length) {
       throw new Error(hasWindow
-        ? 'No manual timestamps fall within the chosen window'
-        : 'Manual mode needs at least one timestamp');
+        ? 'No timestamps fall within the clip window.'
+        : 'Add at least one timestamp.');
     }
   } else if (job.method === 'interval') {
     const step = parseFloat(o.every || 30);
     timestamps = intervalTimestamps({ start: winStart, end: winEnd, step, duration: winEnd }).slice(0, maxFrames());
-    if (!timestamps.length) throw new Error('Interval produced no timestamps (check start/end/step)');
+    if (!timestamps.length) throw new Error('Interval produced no frames. Check the values.');
   } else {
     // scene — analyze only the window where possible, then map results to absolute time
     job.status = 'analyzing';
-    log(job, 'Detecting scene changes…');
+    log(job, 'Analyzing scenes…');
     // Indeterminate: a scene-analysis pass filters its output, so ffmpeg reports no
     // reliable decode position (time=N/A) to drive a percentage. The bar animates.
     setProgress(job, 'analyzing');
@@ -257,7 +257,7 @@ async function run(job) {
     const base = localWindowed ? winStart : job.clipOffset; // window-relative+winStart, or file-local+clipOffset
     const raw = await detectScenes(job.videoPath, parseFloat(o.threshold || 0.3), opts);
     const scenes = raw.map((s) => ({ tSec: s.tSec + base, score: s.score }));
-    log(job, `Found ${scenes.length} scene candidates.`);
+    log(job, `Found ${scenes.length} scenes.`);
     const chosen = selectScenes(scenes, { budget, start: winStart, end: winEnd });
     timestamps = chosen.map((c) => c.tSec);
     chosen.forEach((c) => { if (c.score != null) scoreByTime.set(c.tSec, c.score); });
@@ -307,12 +307,12 @@ async function run(job) {
   log(job, 'Building contact sheet…');
   try {
     job.sheet = await buildContactSheet(job.pkgDir, job.frames, { ext });
-    log(job, job.sheet ? `Contact sheet → ${job.sheet}` : 'Contact sheet skipped (no font / ffmpeg).');
+    log(job, job.sheet ? 'Built contact sheet.' : 'Skipped contact sheet.');
   } catch (err) {
-    log(job, `Contact sheet failed (continuing): ${String(err?.message || err)}`);
+    log(job, `Contact sheet failed: ${String(err?.message || err)}`);
   }
 
-  log(job, 'Writing manifest…');
+  log(job, 'Writing files…');
   await writeManifest(job.pkgDir, manifestArgs(job));
   if (job.cues.length) {
     // Restrict the transcript to the window so it matches the frames.
@@ -324,7 +324,7 @@ async function run(job) {
 
   job.status = 'done';
   setProgress(job, 'done', 1);
-  log(job, `Done — ${job.frames.length} frames in output/${job.pkgName}/`);
+  log(job, `Done. ${job.frames.length} frames in ${job.pkgName}.`);
 }
 
 /** Shared manifest argument shape so run/reselect/manual stay in sync. */
@@ -340,7 +340,7 @@ function manifestArgs(job) {
 export async function reselect(job, keepIndexes) {
   const keep = new Set(keepIndexes);
   const remaining = job.frames.filter((f) => keep.has(f.index));
-  if (!remaining.length) throw new Error('Cannot keep zero frames');
+  if (!remaining.length) throw new Error('Keep at least one frame.');
   // delete dropped frame files
   const framesDir = path.join(job.pkgDir, 'frames');
   for (const f of job.frames) {

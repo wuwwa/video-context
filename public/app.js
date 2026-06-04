@@ -49,25 +49,35 @@
     if (atBottom) el.scrollTop = el.scrollHeight;
   }
 
+  // Human labels for the server's internal phase tokens — the bar never shows raw keys.
+  const PHASE_LABEL = {
+    queued: 'Queued', preparing: 'Preparing', starting: 'Starting',
+    metadata: 'Reading video', probing: 'Reading video', downloading: 'Downloading',
+    subtitles: 'Fetching subtitles', analyzing: 'Analyzing scenes',
+    extracting: 'Extracting frames', processing: 'Finishing', packaging: 'Finishing',
+    done: 'Done', error: 'Error',
+  };
+  const phaseLabel = (p) => PHASE_LABEL[p] || (p ? p[0].toUpperCase() + p.slice(1) : '');
+
   // Drive the progress bar from a job's { phase, ratio } plus its status.
   function setBar(progress, status) {
     const wrap = $('progress'), fill = $('progFill'), label = $('progLabel');
     wrap.classList.remove('indeterminate', 'done', 'err');
     const phase = progress && progress.phase ? progress.phase : (status || '');
     if (status === 'error' || phase === 'error') {
-      wrap.classList.add('err'); fill.style.width = '100%'; label.textContent = 'error'; return;
+      wrap.classList.add('err'); fill.style.width = '100%'; label.textContent = 'Error'; return;
     }
     if (status === 'done' || phase === 'done') {
-      wrap.classList.add('done'); fill.style.width = '100%'; label.textContent = 'done'; return;
+      wrap.classList.add('done'); fill.style.width = '100%'; label.textContent = 'Done'; return;
     }
     const ratio = progress ? progress.ratio : null;
     if (ratio == null) {
       wrap.classList.add('indeterminate'); fill.style.width = '35%';
-      label.textContent = phase ? `${phase}…` : '';
+      label.textContent = phase ? `${phaseLabel(phase)}…` : '';
     } else {
       const pct = Math.round(ratio * 100);
       fill.style.width = pct + '%';
-      label.textContent = `${phase} · ${pct}%`;
+      label.textContent = `${phaseLabel(phase)} · ${pct}%`;
     }
   }
 
@@ -128,8 +138,8 @@
     try {
       const r = await api('/api/pick');
       if (r && r.path) { $('localPath').value = r.path; updateFileCard(); refreshRunState(); }
-      else if (r && r.error) { flash('Picker: ' + r.error, 'err'); }
-    } catch { flash('Could not open the file picker.', 'err'); }
+      else if (r && r.error) { flash('Couldn’t open the file picker.', 'err'); }
+    } catch { flash('Couldn’t open the file picker.', 'err'); }
     b.disabled = false; b.textContent = prev;
   };
 
@@ -156,7 +166,7 @@
     $('markRow').hidden = false;
     updateFileCard();
     refreshRunState();
-    flash('Preview loaded — click Browse… to set its path for extraction.', 'muted');
+    flash('Preview ready. Use Browse to set the path.', 'muted');
   }
 
   // Reflect the local-file state: a real path (ready) vs preview-only (needs Browse…).
@@ -227,7 +237,7 @@
     if (start != null && start >= 0) body.start = start;
     if (end != null && end >= 0) body.end = end;
     if (body.start != null && body.end != null && body.end <= body.start) {
-      flash('Clip end must be after clip start.', 'err'); return;
+      flash('Clip end must come after the start.', 'err'); return;
     }
     if (mode === 'manual') {
       const times = $('tsList').value.split('\n').map(parseTime).filter((t) => t != null && t >= 0);
@@ -335,7 +345,7 @@
     const v = await api(`/api/jobs/${job.id}/select`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ keepIndexes: keep }) });
     if (v.error) { flash(v.error, 'err'); return; }
     job = v; render(v);
-    flash('Selection applied — manifest rewritten.', 'muted');
+    flash('Selection applied.', 'muted');
   };
 
   // ---------- init ----------
