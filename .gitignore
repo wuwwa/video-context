@@ -5,3 +5,12 @@ tmp/
 *.log
 .claude/
 .playwright-mcp/
+__pycache__/
+*.py[cod]
+.venv/
+/desktop/build/
+/desktop/build-cli/
+/desktop/dist/
+/desktop/tools/
+/desktop/*.spec
+/desktop/tests/fixtures/

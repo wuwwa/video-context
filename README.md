@@ -1,58 +1,47 @@
-# video-context
+# Framegrab
 
-Turn a video (local file or URL) into a set of timestamped frames plus a manifest you can hand to Claude.
+Turn a video into captioned screenshots for ChatGPT, Codex, or another AI.
 
-Runs locally: a small Express server drives `ffmpeg` (frames) and `yt-dlp` (URL downloads + subtitles). Open one page, pick a source, click Extract.
+**[Download for Windows](https://github.com/wuwwa/video-context/releases/latest/download/Framegrab.exe)** · [Portable ZIP with agent CLI](https://github.com/wuwwa/video-context/releases/latest/download/Framegrab-Windows.zip) · [Releases](https://github.com/wuwwa/video-context/releases)
 
-## Requirements
+1. Open **Framegrab.exe**. Choose **Download** and paste a video URL, or **Open video** for a local file.
+2. Set **Every N sec**. Keep **Whole video**, or choose **Range** and enter start/end times.
+3. Choose **Sample frames**, then **Save**. Use **Open folder** to find the result.
 
-- Node.js 18+
-- `ffmpeg` and `ffprobe` on your PATH (Windows: `winget install Gyan.FFmpeg`)
-- `yt-dlp` — only for URLs; local files work without it (`pip install -U yt-dlp` or `winget install yt-dlp`)
+Defaults: high (up to 1080p), embedded English subtitles including automatic captions, one screenshot every two seconds, original-resolution PNGs. Lower download qualities are available. You can also scrub the timeline, type a timestamp, and use **Capture** for an individual frame.
 
-If a tool isn't on your PATH, set it in `.env` (see `.env.example`).
+## Output for AI reference
 
-## Run
+The default reference pack contains:
 
-```bash
-npm install
-npm start
+- **pages/** — numbered image pages, at most four frames each, with timestamps and caption text.
+- **frames/** — the original exported captures.
+- **transcript.txt / transcript.json / VTT** — all available timed dialogue, including between captures.
+- **manifest.json** — each frame's source, requested/decoded timestamp, caption, crop, image dimensions and page/cell.
+
+A 300-frame export creates **75 pages**. More screenshots add pages without squeezing the existing frames into smaller tiles.
+
+For ChatGPT, attach pages and transcript in batches accepted by your plan. For Codex, point it at the exported folder so it can read the manifest and inspect images as needed. Sampled frames do not preserve every moment or sound.
+
+## Agent commands
+
+Keep `framegrab-cli.exe` beside `Framegrab.exe`; both are in the portable ZIP.
+
+```powershell
+.\framegrab-cli.exe download "VIDEO_URL" --out "C:\Videos"
+.\framegrab-cli.exe frames "C:\Videos\video.mp4" --every 2 --out "C:\References"
+.\framegrab-cli.exe frames "C:\Videos\video.mp4" --every 1 --start 01:00 --end 02:00 --out "C:\References"
+.\framegrab-cli.exe transcript "C:\Videos\video.mp4" --query "search phrase"
 ```
 
-Open http://localhost:5173. (`npm run dev` restarts on changes.)
+Commands emit JSON with the actual created paths. See [Agent guide](desktop/AGENT_GUIDE.md).
 
-## Usage
+## Source and requirements
 
-1. Choose a source: paste a URL, or paste the full path to a local file (drop a file to preview/scrub it).
-2. Pick how frames are chosen:
-   - **Scene** — detects shot changes (up to a frame budget).
-   - **Interval** — one frame every N seconds.
-   - **Manual** — type or capture timestamps.
-3. Optionally set a **clip window** (start/end) to limit frames to one section. For URLs, only that section is downloaded.
-4. Extract, review the grid, untick frames you don't want, then **Save All (.zip)**.
+The desktop application lives in [desktop/](desktop/README.md). FFmpeg, FFprobe, yt-dlp, Python and Node are bundled in the Windows download. Microsoft Edge WebView2 is required and is normally present on Windows 10/11. The executable is unsigned.
 
-## Output
+Text subtitles are supported; bitmap subtitles need OCR, which is not included. Source-site verification and rate limits can block downloads. Unexported captures are temporary until saved. The app does not upload videos or frames.
 
-Each job writes `output/<slug>__<id>/`:
+[Build instructions](desktop/README.md#rebuild) · [Verification](desktop/VERIFICATION.md) · [Third-party licenses](desktop/THIRD_PARTY.md)
 
-```
-frames/                 one image per frame, named <slug>__<index>__<HH-MM-SS>
-contactsheet.jpg        all frames in one labeled grid
-manifest.md / .json     frame list with timestamps (+ transcript snippets)
-transcript.md           full transcript, when subtitles are available
-```
-
-Frames are downscaled to a 1568px long edge; URL downloads are capped at 720p.
-
-## Config (`.env`)
-
-| Var | Default | Meaning |
-|-----|---------|---------|
-| `PORT` | `5173` | server port |
-| `FFMPEG_PATH` / `FFPROBE_PATH` / `YTDLP_PATH` | auto | explicit tool paths |
-| `OUTPUT_DIR` | `output` | where packages are written |
-| `MAX_FRAMES` | `60` | cap on frames per job |
-| `FRAME_LONG_EDGE` | `1568` | frame long-edge size |
-| `SHEET_FONT` | auto | path to a `.ttf` for contact-sheet labels |
-
-[`framegrab.html`](framegrab.html) is an offline, single-file fallback for local files only (no server, no yt-dlp).
+The earlier Node/Express browser utility and offline `framegrab.html` remain available. See [browser version instructions](docs/browser-version.md). Run those commands from the repository root.
